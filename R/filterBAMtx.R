@@ -148,7 +148,7 @@ filterBAMtx <- function(object, path=".", txflag=filterBAMtxFlag(),
 #' @importFrom Rsamtools bamWhat bamTag
 #' @importFrom S4Vectors DataFrame mcols<-
 #' @importFrom GenomeInfoDb seqlengths
-#' @importFrom GenomicAlignments GAlignments njunc first
+#' @importFrom GenomicAlignments GAlignments njunc first last
 .bamtx_filter <- function(x) {
     n <- 5  ## this number is derived from the fact that .scj_filter()
             ## is called by 'eval()' within the 'filterBam()' function
@@ -173,11 +173,13 @@ filterBAMtx <- function(object, path=".", txflag=filterBAMtxFlag(),
     stopifnot(nrow(x) == length(gal)) ## QC
     cnames <- setdiff(c(bamWhat(param), bamTag(param)),
                         c("rname", "pos", "cigar", "strand"))
+    dtf <- DataFrame(idx=1:nrow(x))
     if (length(cnames) > 0) {
-        dtf <- do.call(DataFrame, as.list(x[cnames]))
-        colnames(dtf) <- cnames
-        mcols(gal) <- dtf
+        dtf2 <- do.call(DataFrame, as.list(x[cnames]))
+        colnames(dtf2) <- cnames
+        dtf <- cbind(dtf2, dtf)
     }
+    mcols(gal) <- dtf
     gal <- .makeGAlPE(singleEnd, param, strandMode, gal)
     if (stdChrom)
         if (singleEnd)
@@ -189,7 +191,6 @@ filterBAMtx <- function(object, path=".", txflag=filterBAMtxFlag(),
     
     alntype <- .getalntype(gal, txflag, igc, int, strandMode, tx,
                             tx2gene, singleEnd)
-    mask <- alntype$mask
     envstats <- get("stats", envir=statsenv)
     envstats <- envstats + alntype$stats
     assign("stats", envstats, envir=statsenv)
@@ -200,11 +201,16 @@ filterBAMtx <- function(object, path=".", txflag=filterBAMtxFlag(),
                         100*sum(envstats[-1])/envstats["NALN"], messwhalnstr))
     }
     
-    if (singleEnd)
-        mt <- match(x$qname, mcols(gal)$qname)
-    else
-        mt <- match(x$qname, mcols(first(gal))$qname)
-    mask <- mask[mt]
+    mask <- rep(FALSE, nrow(x))
+    if (any(alntype$mask)) {
+        keep <- integer(0)
+        if (singleEnd)
+            keep <- mcols(gal)$idx[alntype$mask]
+        else
+            keep <- c(mcols(first(gal))$idx[alntype$mask],
+                      mcols(last(gal))$idx[alntype$mask])
+        mask[keep] <- TRUE
+    }
     mask
 }
 
